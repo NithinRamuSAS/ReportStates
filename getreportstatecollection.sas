@@ -1,3 +1,4 @@
+%let reportID = YOUR-REPORT-ID;
 %let token=%sysget(SAS_CLIENT_TOKEN);
 %let host=%sysfunc(getoption(SERVICESBASEURL));
 
@@ -9,8 +10,7 @@ import pandas as pd
 
 token = SAS.symget('token')
 host = SAS.symget('host')
-
-reportId = 'cf4255cf-0e01-48b5-ae02-7164d9d0f157'
+reportId = SAS.symget('reportID')
 
 def retrieve_etag(reportId):
     reportURI = 'reports/reports/' + reportId

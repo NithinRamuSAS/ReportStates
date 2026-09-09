@@ -1,7 +1,7 @@
-%let reportID = cf4255cf-0e01-48b5-ae02-7164d9d0f157;
+%let reportID = YOUR-REPORT-ID;
 %let token=%sysget(SAS_CLIENT_TOKEN);
 %let host=%sysfunc(getoption(SERVICESBASEURL));
-%let reportStateLocation = /create-export/create/homes/Nithin.Ramu@sas.com/casuser/sort_sports_2001q3_xml_state_content.txt;
+%let reportStateLocation = PATH-TO-STATE-FILE;
 
 proc python;
 submit;
@@ -16,8 +16,6 @@ reportStateLocation = SAS.symget('reportStateLocation')
 url = str(host) + "/reports/reports/" + reportId
 
 headers = {
-    # "If-None-Match": "",
-    # "If-Modified-Since": "",
     "Authorization": "Bearer " + token,
     "Accept": "application/json, application/vnd.sas.report+json, application/vnd.sas.error+json"
 }

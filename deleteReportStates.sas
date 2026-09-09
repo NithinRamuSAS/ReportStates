@@ -1,9 +1,7 @@
-
-
 * Get Ready;
 %let token=%sysget(SAS_CLIENT_TOKEN);
 %let host=%sysfunc(getoption(SERVICESBASEURL));
-%let reportID = cf4255cf-0e01-48b5-ae02-7164d9d0f157;
+%let reportID = YOUR-REPORT-ID;
 
 proc python;
 submit;
