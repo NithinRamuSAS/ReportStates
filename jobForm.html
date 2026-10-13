@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Report States</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 560px;
+      margin: 40px auto;
+      padding: 0 16px;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 20px; }
+    .form-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .actions-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 120px;
+    }
+    .save-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    select {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 6px 16px;
+      font-size: 1rem;
+      cursor: pointer;
+      border: 1px solid #0067b8;
+      border-radius: 4px;
+      background: #0067b8;
+      color: #fff;
+      white-space: nowrap;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      min-height: 1.2em;
+      color: #555;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #status.error { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Report States Version 6</h1>
+
+  <div class="form-row">
+    <select id="stateSelect" aria-label="Report State">
+      <option value="">— select a state —</option>
+    </select>
+    <div class="actions-column">
+      <button id="refreshBtn" type="button">&#8635; Refresh</button>
+      <button id="loadBtn" type="button">Load State</button>
+      <button id="deleteBtn" type="button">Delete State</button>
+    </div>
+  </div>
+
+  <div class="save-row">
+    <input type="text" id="newStateLabel" name="newStateLabel" aria-label="New State Label" placeholder="newStateLabel" />
+    <button id="saveBtn" type="button">Save State</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    /*
+     * This form is hosted on a separate web server from SAS Viya, so it
+     * cannot rely on relative URLs (which would resolve against its own
+     * origin instead of the Viya server) or on SAS Visual Analytics
+     * supplying a "_program" query parameter (which is only added when the
+     * form is embedded as a VA Web Content object). Hardcode the Viya
+     * server origin and the job's program path so the form works no
+     * matter where it is embedded. The "_program" query parameter is still
+     * honored as an override for local testing.
+     */
+    const SAS_SERVER_URL = "https://server.demo.sas.com";
+    const JOB_URI = new URLSearchParams(window.location.search).get("_program") || "/Users/admin/My Folder/Report State";
+    const JOB_EXECUTION_ENDPOINT = SAS_SERVER_URL + "/SASJobExecution/";
+
+    function setStatus(message, isError = false) {
+      const el = document.getElementById("status");
+      el.textContent = message;
+      el.className = isError ? "error" : "";
+    }
+
+    function getReportId() {
+      const reportId = new URLSearchParams(window.location.search).get("reportID");
+      if (!reportId) {
+        throw new Error("Report ID is not set.");
+      }
+      return reportId;
+    }
+
+    function getSelectedStateLabel() {
+      const stateId = document.getElementById("stateSelect").value;
+      if (!stateId) {
+        throw new Error("Select a state before continuing.");
+      }
+      return stateId;
+    }
+
+    function setButtonsDisabled(disabled) {
+      document.getElementById("refreshBtn").disabled = disabled;
+      document.getElementById("loadBtn").disabled = disabled;
+      document.getElementById("deleteBtn").disabled = disabled;
+      document.getElementById("saveBtn").disabled = disabled;
+    }
+
+    async function executeJob(params, responseType) {
+      if (!JOB_URI) {
+        throw new Error("Job URI is not set.");
+      }
+
+      const query = new URLSearchParams({
+        _program: JOB_URI,
+        _action: "execute",
+        _ts: Date.now().toString(),
+        ...params
+      });
+
+      const response = await fetch(JOB_EXECUTION_ENDPOINT + "?" + query.toString(), {
+        method: "GET",
+        cache: "no-store",
+        mode: "cors",
+        credentials: "include",
+        headers: responseType === "json" ? { "Accept": "application/json" } : {}
+      });
+
+      /*
+       * SAS Job Execution can return HTTP 200 with an HTML "Job Error" page
+       * (or another non-JSON body) even when the underlying job fails, so
+       * always read the raw text first and only parse it as JSON when it
+       * actually looks like JSON. This lets us surface the real SAS log
+       * error to the user instead of a confusing JSON.parse failure.
+       */
+      const rawText = await response.text();
+
+      if (!response.ok) {
+        throw new Error("Job request failed: " + response.status + " " + response.statusText + "\n" + rawText);
+      }
+
+      /*
+       * The Studio compute context opens a default ODS HTML5 destination on
+       * _webout before the job code runs. Even after "ods _all_ close;",
+       * closing that destination flushes an (empty) HTML document into
+       * _webout ahead of our real proc json output, so the response we get
+       * here is actually "<html>...</html>[ ... ]" concatenated together.
+       * Strip everything up through the last "</html>" (case-insensitive)
+       * so we're left with just the JSON payload that follows it.
+       */
+      let payload = rawText;
+      const htmlCloseMatch = /<\/html>/i.exec(payload);
+      if (htmlCloseMatch) {
+        payload = payload.slice(htmlCloseMatch.index + htmlCloseMatch[0].length);
+      }
+
+      const trimmed = payload.trim();
+      const looksLikeJson = trimmed.startsWith("{") || trimmed.startsWith("[");
+
+      if (responseType === "json") {
+        if (!looksLikeJson) {
+          console.error("Full non-JSON job response:", rawText);
+          throw new Error("Job did not return the expected output. Full response logged to console.\nFirst 2000 chars:\n" + trimmed.substring(0, 2000));
+        }
+        return JSON.parse(trimmed);
+      }
+
+      return trimmed;
+    }
+
+    function renderStates(states) {
+      const select = document.getElementById("stateSelect");
+      select.innerHTML = '<option value="">— select a state —</option>';
+      states.forEach(function (state) {
+        const opt = document.createElement("option");
+        opt.value = state.label;
+        opt.textContent = state.label;
+        select.appendChild(opt);
+      });
+    }
+
+    async function refreshStates() {
+      setButtonsDisabled(true);
+      setStatus("Refreshing list of states…");
+
+      try {
+        const reportId = getReportId();
+        const states = await executeJob({
+          request: "GET",
+          reportID: reportId
+        }, "json");
+
+        if (!Array.isArray(states)) {
+          throw new Error("Expected a JSON array of states from request=GET.");
+        }
+
+        renderStates(states);
+        setStatus("Found " + states.length + " state" + (states.length !== 1 ? "s" : "") + ".");
+      } catch (err) {
+        setStatus(err.message, true);
+        console.error(err);
+      } finally {
+        setButtonsDisabled(false);
+      }
+    }
+
+    async function loadState() {
+      setButtonsDisabled(true);
+      setStatus("Loading selected state…");
+
+      try {
+        const reportId = getReportId();
+        const stateLabel = getSelectedStateLabel();
+        await executeJob({
+          request: "APPLY",
+          reportID: reportId,
+          stateLabel: stateLabel
+        }, "text");
+        setStatus("State loaded. Click on the report menu and reopen report.");
+      } catch (err) {
+        setStatus(err.message, true);
+        console.error(err);
+      } finally {
+        setButtonsDisabled(false);
+      }
+    }
+
+    async function deleteState() {
+      setButtonsDisabled(true);
+      setStatus("Deleting selected state…");
+
+      try {
+        const reportId = getReportId();
+        const stateLabel = getSelectedStateLabel();
+        await executeJob({
+          request: "DELETE",
+          reportID: reportId,
+          stateLabel: stateLabel
+        }, "text");
+        setStatus("State deleted.");
+        await refreshStates();
+      } catch (err) {
+        setStatus(err.message, true);
+        console.error(err);
+      } finally {
+        setButtonsDisabled(false);
+      }
+    }
+
+    async function saveState() {
+      setButtonsDisabled(true);
+      setStatus("Saving state…");
+
+      try {
+        const reportId = getReportId();
+        const newStateLabel = document.getElementById("newStateLabel").value.trim();
+        if (!newStateLabel) {
+          throw new Error("Enter a newStateLabel before saving.");
+        }
+
+        await executeJob({
+          request: "SAVE",
+          reportID: reportId,
+          newStateLabel: newStateLabel
+        }, "text");
+        document.getElementById("newStateLabel").value = "";
+        setStatus("State saved.");
+        await refreshStates();
+      } catch (err) {
+        setStatus(err.message, true);
+        console.error(err);
+      } finally {
+        setButtonsDisabled(false);
+      }
+    }
+
+    (function init() {
+      document.getElementById("refreshBtn").addEventListener("click", refreshStates);
+      document.getElementById("loadBtn").addEventListener("click", loadState);
+      document.getElementById("deleteBtn").addEventListener("click", deleteState);
+      document.getElementById("saveBtn").addEventListener("click", saveState);
+
+      refreshStates().catch(function (err) {
+        setStatus(err.message, true);
+        console.error(err);
+      });
+    })();
+  </script>
+</body>
+</html>
