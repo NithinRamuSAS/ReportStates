@@ -67,7 +67,7 @@ def retrieve_states():
     if did > 0 then do i = 1 to dnum(did);
     label = dread(did, i);
     extension = scan(label, -1, ".");
-    if extension = "xml" then do;
+    if extension = "txt" then do;
     label = substr(label, 1, length(label) - 4);
     output;
     end;
