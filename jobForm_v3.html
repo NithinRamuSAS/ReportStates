@@ -83,7 +83,7 @@
      * matter where it is embedded. The "_program" query parameter is still
      * honored as an override for local testing.
      */
-    const SAS_SERVER_URL = "https://server.demo.sas.com";
+    const SAS_SERVER_URL = window.location.origin;
     const JOB_URI = new URLSearchParams(window.location.search).get("_program") || "/Users/admin/My Folder/Report State";
     const JOB_EXECUTION_ENDPOINT = SAS_SERVER_URL + "/SASJobExecution/";
 
