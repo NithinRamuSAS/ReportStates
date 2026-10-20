@@ -7,43 +7,33 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 560px;
+      max-width: 1280px;
       margin: 40px auto;
       padding: 0 16px;
     }
     h1 { font-size: 1.4rem; margin-bottom: 20px; }
-    .form-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-    .actions-column {
+    .controls {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      min-width: 120px;
-    }
-    .save-row {
-      display: flex;
-      align-items: center;
       gap: 10px;
     }
-    select {
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    @media (min-width: 768px) {
+      .controls { flex-direction: row; }
+      .row { flex: 1 1 0; }
+    }
+    select, input[type="text"] {
       flex: 1;
+      min-width: 0;
       padding: 6px 10px;
       font-size: 1rem;
       border: 1px solid #ccc;
       border-radius: 4px;
-    }
-    input[type="text"] {
-      flex: 1;
-      padding: 6px 10px;
-      font-size: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    button {
+    }    button {
       padding: 6px 16px;
       font-size: 1rem;
       cursor: pointer;
@@ -66,26 +56,22 @@
   </style>
 </head>
 <body>
-  <h1>Report States Version 6</h1>
-
-  <div class="form-row">
-    <select id="stateSelect" aria-label="Report State">
-      <option value="">— select a state —</option>
-    </select>
-    <div class="actions-column">
+  <div class="controls">
+    <div class="row">
+      <select id="stateSelect" aria-label="Report State">
+        <option value="">— select a state —</option>
+      </select>
       <button id="refreshBtn" type="button">&#8635; Refresh</button>
       <button id="loadBtn" type="button">Load State</button>
       <button id="deleteBtn" type="button">Delete State</button>
     </div>
-  </div>
-
-  <div class="save-row">
-    <input type="text" id="newStateLabel" name="newStateLabel" aria-label="New State Label" placeholder="newStateLabel" />
-    <button id="saveBtn" type="button">Save State</button>
+    <div class="row">
+      <input type="text" id="newStateLabel" name="newStateLabel" aria-label="New State Label" placeholder="newStateLabel" />
+      <button id="saveBtn" type="button">Save State</button>
+    </div>
   </div>
 
   <div id="status"></div>
-
   <script>
     /*
      * This form is hosted on a separate web server from SAS Viya, so it
@@ -108,7 +94,7 @@
     }
 
     function getReportId() {
-      const reportId = new URLSearchParams(window.location.search).get("reportID");
+      const reportId = new URLSearchParams(window.location.search).get("report_ID");
       if (!reportId) {
         throw new Error("Report ID is not set.");
       }
@@ -211,7 +197,7 @@
         const reportId = getReportId();
         const states = await executeJob({
           request: "GET",
-          reportID: reportId
+          report_ID: reportId
         }, "json");
 
         if (!Array.isArray(states)) {
@@ -237,7 +223,7 @@
         const stateLabel = getSelectedStateLabel();
         await executeJob({
           request: "APPLY",
-          reportID: reportId,
+          report_ID: reportId,
           stateLabel: stateLabel
         }, "text");
         setStatus("State loaded. Click on the report menu and reopen report.");
@@ -258,7 +244,7 @@
         const stateLabel = getSelectedStateLabel();
         await executeJob({
           request: "DELETE",
-          reportID: reportId,
+          report_ID: reportId,
           stateLabel: stateLabel
         }, "text");
         setStatus("State deleted.");
@@ -273,7 +259,7 @@
 
     async function saveState() {
       setButtonsDisabled(true);
-      setStatus("Saving state…");
+      setStatus("Waiting 30 seconds for primary report state to be captured and saving state…");
 
       try {
         const reportId = getReportId();
@@ -284,7 +270,7 @@
 
         await executeJob({
           request: "SAVE",
-          reportID: reportId,
+          report_ID: reportId,
           newStateLabel: newStateLabel
         }, "text");
         document.getElementById("newStateLabel").value = "";

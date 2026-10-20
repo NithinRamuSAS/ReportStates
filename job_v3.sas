@@ -1,6 +1,7 @@
+%let state_content_root = /workshop/Courses/userdata/reportstates;
+%let state_content_location = &state_content_root./&report_ID.;
 %let token=%sysget(SAS_CLIENT_TOKEN);
 %let host=%sysfunc(getoption(SERVICESBASEURL));
-%let state_content_location = /workshop/Courses/userdata/reportstates;
 
 /*
  * The Studio compute context opens a default ODS HTML5 destination
@@ -13,17 +14,18 @@ proc python;
 submit;
 SAS.hideLOG(False)
 import os
+import time
 import requests
 
 token = SAS.symget('token')
 host = SAS.symget('host')
-reportID = SAS.symget('reportID')
+report_ID = SAS.symget('report_ID')
 request = SAS.symget('request')
 state_content_location = SAS.symget('state_content_location')
 print(request)
 
-def retrieve_report_metadata(reportID):
-    reportURI = 'reports/reports/' + reportID
+def retrieve_report_metadata(report_ID):
+    reportURI = 'reports/reports/' + report_ID
     url = str(host) + '/' + reportURI
     headers = {"Authorization": "Bearer " + token,
             "Accept" : "application/json"}
@@ -45,7 +47,7 @@ def delete_state(state_label):
             print("delete_state failed for state_label: " + state_label + " with error: " + str(e))
 
 def retrieve_state_ETag(stateID):
-    url = str(host) + "/reports/reports/" + reportID + "/states/" + stateID
+    url = str(host) + "/reports/reports/" + report_ID + "/states/" + stateID
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer " + token,
@@ -56,9 +58,9 @@ def retrieve_state_ETag(stateID):
     stateETag = response.headers['ETag']
     return stateETag
 
-def retrieve_states():
+def retrieve_states(state_content_location):
     # Return as table
-    SAS.submit('''filename dir "&state_content_location.";
+    SAS.submit('''filename dir "{}";
 
     data work.states;
     length label extension $256;
@@ -78,10 +80,10 @@ def retrieve_states():
     keep label;
     run;
 
-    filename dir clear;''')
+    filename dir clear;'''.format(state_content_location))
 
 def retrieve_primary_state():
-    url = str(host) + "/reports/reports/" + reportID + "/states"
+    url = str(host) + "/reports/reports/" + report_ID + "/states"
     headers = {
     "Accept-Language": "",
     "Authorization": "Bearer " + token,
@@ -93,7 +95,7 @@ def retrieve_primary_state():
     return primaryStateID
 
 def create_state(state_label, report_modified, primary=False):
-    url = str(host) + "/reports/reports/" + reportID + "/states"
+    url = str(host) + "/reports/reports/" + report_ID + "/states"
 
     if primary:
         payload = {
@@ -123,7 +125,7 @@ def get_state_content(state_label):
 
 def get_primary_state_content():
     stateID = retrieve_primary_state()
-    url = str(host) + "/reports/reports/" + reportID + "/states/" + stateID + "/content"
+    url = str(host) + "/reports/reports/" + report_ID + "/states/" + stateID + "/content"
 
     headers = {
         "Authorization": "Bearer " + token,
@@ -136,7 +138,7 @@ def get_primary_state_content():
     return state_content
 
 def put_state_content(stateID, stateETag, stateContent):
-    url = str(host) + "/reports/reports/" + reportID + "/states/" + stateID + "/content"
+    url = str(host) + "/reports/reports/" + report_ID + "/states/" + stateID + "/content"
 
     headers = {"If-Match" : stateETag,
             "Authorization": "Bearer " + token,
@@ -147,7 +149,7 @@ def put_state_content(stateID, stateETag, stateContent):
     print("put_state_content executed with code: " + str(response.status_code))
 
 if request == 'GET':
-    retrieve_states()
+    retrieve_states(state_content_location)
 
     # Return as JSON in _webout
     SAS.submit('''proc json out=_webout pretty; export work.states / nosastags; run;''')
@@ -157,6 +159,7 @@ elif request == 'DELETE':
     delete_state(state_label)
 
 elif request in ("BOOKMARK", "SAVE"):
+    time.sleep(30)
     new_state_label = SAS.symget('newStateLabel')
     state_content = get_primary_state_content()
     loc = os.path.join(state_content_location, new_state_label + ".txt")
@@ -167,7 +170,7 @@ elif request in ("BOOKMARK", "SAVE"):
 elif request == "APPLY":
     state_label = SAS.symget('stateLabel')
     stateContent = get_state_content(state_label)
-    reportETag, report_modified = retrieve_report_metadata(reportID)
+    reportETag, report_modified = retrieve_report_metadata(report_ID)
     primaryStateID = retrieve_primary_state()
     if primaryStateID == None:
         primaryStateID = create_state("Primary", report_modified, primary=True)
