@@ -162,6 +162,8 @@ elif request in ("BOOKMARK", "SAVE"):
     time.sleep(30)
     new_state_label = SAS.symget('newStateLabel')
     state_content = get_primary_state_content()
+    if not os.path.exists(state_content_location):
+        os.makedirs(state_content_location)
     loc = os.path.join(state_content_location, new_state_label + ".txt")
     with open(loc, "w") as f:
         f.write(state_content)
