@@ -1,4 +1,4 @@
-%let state_content_root = /workshop/Courses/userdata/reportstates;
+%let state_content_root = <PASTE-YOUR-PATH>;
 %let state_content_location = &state_content_root./&report_ID.;
 %let token=%sysget(SAS_CLIENT_TOKEN);
 %let host=%sysfunc(getoption(SERVICESBASEURL));
